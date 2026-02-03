@@ -1,0 +1,48 @@
+name: ganapp
+description: A professional AgTech Flutter application.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State Management
+  flutter_riverpod: ^2.4.9
+  riverpod_annotation: ^2.3.3
+
+  # Navigation
+  go_router: ^13.0.0
+
+  # Database
+  isar: ^3.1.0+1
+  isar_flutter_libs: ^3.1.0+1
+
+  # Backend
+  supabase_flutter: ^2.5.6
+
+  # Utilities
+  path_provider: ^2.1.1
+  lottie: ^3.0.0
+  cached_network_image: ^3.3.1
+  shared_preferences: ^2.2.2
+
+  # UI
+  cupertino_icons: ^1.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  
+  # Code Generation
+  build_runner: ^2.4.7
+  isar_generator: ^3.1.0+1
+  riverpod_generator: ^2.3.9
+
+flutter:
+  uses-material-design: true
+
