@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
@@ -27,6 +28,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _rememberMe = false;
   bool _obscurePassword = true;
   String? _errorMessage;
+  bool _methodManuallySelected = false; // Rastrea si el usuario seleccionó manualmente
 
   @override
   void dispose() {
@@ -58,7 +60,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   /// Maneja el cambio en el campo de email/teléfono.
   void _onEmailPhoneChanged(String value) {
     setState(() {
-      _isEmail = _detectInputType(value);
+      // Solo detectar automáticamente si el usuario no ha seleccionado manualmente un método
+      if (!_methodManuallySelected) {
+        _isEmail = _detectInputType(value);
+      }
       _errorMessage = null;
       // Si cambia el tipo, limpiar campos relacionados
       if (_isEmail) {
@@ -97,9 +102,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       }
     } catch (e) {
       setState(() {
-        _errorMessage = e is AuthException 
-            ? e.message 
-            : 'Error al enviar código. Verifica tu número de teléfono.';
+        // Traducir errores técnicos a mensajes comprensibles
+        String errorMsg = 'Error al enviar código. Verifica tu número de teléfono.';
+        if (e is AuthException) {
+          errorMsg = e.message;
+        } else {
+          final errorString = e.toString().toLowerCase();
+          if (errorString.contains('phone_provider_disabled') ||
+              (errorString.contains('sms provider') && errorString.contains('disabled'))) {
+            errorMsg = 'Servicio de SMS temporalmente fuera de servicio. Por favor, usa correo electrónico para iniciar sesión.';
+          } else if (errorString.contains('statuscode: 400') ||
+                     errorString.contains('400')) {
+            errorMsg = 'Error con el servicio de SMS. Intenta usar correo electrónico o contacta al soporte.';
+          }
+        }
+        _errorMessage = errorMsg;
       });
     }
   }
@@ -123,7 +140,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           );
 
       if (mounted) {
-        context.go('/inventario');
+        context.go('/predios');
       }
     } catch (e) {
       setState(() {
@@ -153,7 +170,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           );
 
       if (mounted) {
-        context.go('/inventario');
+        context.go('/predios');
       }
     } catch (e) {
       setState(() {
@@ -204,35 +221,198 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                   // Título
                   Text(
-                    'Bienvenido a Cownect',
-                    style: Theme.of(context).textTheme.displaySmall,
+                    'Cownect',
+                    style: Theme.of(context).textTheme.displayMedium?.copyWith(
+                      color: Colors.black,
+                      fontWeight: FontWeight.bold,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'Sistema de Gestión Ganadera',
-                    style: Theme.of(context).textTheme.bodyLarge,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: Colors.black87,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 48),
+
+                  // Selector de método de autenticación
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.grey.shade400,
+                        width: 2,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: () {
+                              setState(() {
+                                _isEmail = true;
+                                _methodManuallySelected = true;
+                                _emailPhoneController.clear();
+                                _passwordController.clear();
+                                _otpController.clear();
+                                _isOtpSent = false;
+                                _errorMessage = null;
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 16,
+                                horizontal: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _isEmail 
+                                    ? AppColors.emeraldGreen.withOpacity(0.1)
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(12),
+                                border: _isEmail
+                                    ? Border.all(
+                                        color: AppColors.emeraldGreen,
+                                        width: 2,
+                                      )
+                                    : null,
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.email_outlined,
+                                    color: _isEmail
+                                        ? AppColors.emeraldGreen
+                                        : Colors.black54,
+                                    size: 24,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Correo',
+                                    style: TextStyle(
+                                      color: _isEmail
+                                          ? AppColors.emeraldGreen
+                                          : Colors.black87,
+                                      fontWeight: _isEmail
+                                          ? FontWeight.bold
+                                          : FontWeight.w500,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: InkWell(
+                            onTap: () {
+                              setState(() {
+                                _isEmail = false;
+                                _methodManuallySelected = true;
+                                _emailPhoneController.clear();
+                                _passwordController.clear();
+                                _otpController.clear();
+                                _isOtpSent = false;
+                                _errorMessage = null;
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 16,
+                                horizontal: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: !_isEmail 
+                                    ? AppColors.emeraldGreen.withOpacity(0.1)
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(12),
+                                border: !_isEmail
+                                    ? Border.all(
+                                        color: AppColors.emeraldGreen,
+                                        width: 2,
+                                      )
+                                    : null,
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.phone_outlined,
+                                    color: !_isEmail
+                                        ? AppColors.emeraldGreen
+                                        : Colors.black54,
+                                    size: 24,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Teléfono',
+                                    style: TextStyle(
+                                      color: !_isEmail
+                                          ? AppColors.emeraldGreen
+                                          : Colors.black87,
+                                      fontWeight: !_isEmail
+                                          ? FontWeight.bold
+                                          : FontWeight.w500,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
 
                   // Campo Email/Teléfono
                   TextFormField(
                     controller: _emailPhoneController,
                     decoration: InputDecoration(
                       labelText: _isEmail ? 'Correo electrónico' : 'Teléfono',
+                      labelStyle: const TextStyle(
+                        color: Colors.black87,
+                        fontWeight: FontWeight.w500,
+                      ),
                       hintText: _isEmail 
                           ? 'ejemplo@correo.com' 
                           : '10 dígitos',
                       prefixIcon: Icon(
                         _isEmail ? Icons.email_outlined : Icons.phone_outlined,
+                        color: Colors.black87,
                       ),
+                      filled: true,
+                      fillColor: Colors.white,
                     ),
+                    style: const TextStyle(color: Colors.black),
                     keyboardType: _isEmail 
                         ? TextInputType.emailAddress 
                         : TextInputType.phone,
                     textInputAction: TextInputAction.next,
-                    onChanged: _onEmailPhoneChanged,
+                    inputFormatters: _isEmail 
+                        ? null 
+                        : [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(10),
+                          ],
+                    onChanged: (value) {
+                      _onEmailPhoneChanged(value);
+                      // Validación en tiempo real para teléfono
+                      if (!_isEmail && _formKey.currentState != null) {
+                        final cleanPhone = value.trim()
+                            .replaceAll(RegExp(r'[\s\-\(\)]'), '');
+                        if (cleanPhone.length == 10) {
+                          // Validar automáticamente cuando tenga 10 dígitos
+                          _formKey.currentState!.validate();
+                        }
+                      }
+                    },
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) {
                         return 'Este campo es obligatorio';
@@ -245,8 +425,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       } else {
                         final cleanPhone = value.trim()
                             .replaceAll(RegExp(r'[\s\-\(\)]'), '');
-                        if (cleanPhone.length < 10) {
-                          return 'Ingresa un número de teléfono válido (10 dígitos)';
+                        if (cleanPhone.length != 10) {
+                          return 'El teléfono debe tener exactamente 10 dígitos';
+                        }
+                        if (!RegExp(r'^\d{10}$').hasMatch(cleanPhone)) {
+                          return 'Solo se permiten números';
                         }
                       }
                       return null;
@@ -260,12 +443,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       controller: _passwordController,
                       decoration: InputDecoration(
                         labelText: 'Contraseña',
-                        prefixIcon: const Icon(Icons.lock_outline),
+                        labelStyle: const TextStyle(
+                          color: Colors.black87,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        prefixIcon: const Icon(
+                          Icons.lock_outline,
+                          color: Colors.black87,
+                        ),
                         suffixIcon: IconButton(
                           icon: Icon(
                             _obscurePassword 
                                 ? Icons.visibility_outlined 
                                 : Icons.visibility_off_outlined,
+                            color: Colors.black87,
                           ),
                           onPressed: () {
                             setState(() {
@@ -273,7 +464,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             });
                           },
                         ),
+                        filled: true,
+                        fillColor: Colors.white,
                       ),
+                      style: const TextStyle(color: Colors.black),
                       obscureText: _obscurePassword,
                       textInputAction: TextInputAction.done,
                       validator: (value) {
@@ -293,11 +487,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   if (!_isEmail && _isOtpSent) ...[
                     TextFormField(
                       controller: _otpController,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Código OTP',
+                        labelStyle: const TextStyle(
+                          color: Colors.black87,
+                          fontWeight: FontWeight.w500,
+                        ),
                         hintText: 'Ingresa el código de 6 dígitos',
-                        prefixIcon: Icon(Icons.sms_outlined),
+                        prefixIcon: const Icon(
+                          Icons.sms_outlined,
+                          color: Colors.black87,
+                        ),
+                        filled: true,
+                        fillColor: Colors.white,
                       ),
+                      style: const TextStyle(color: Colors.black),
                       keyboardType: TextInputType.number,
                       textInputAction: TextInputAction.done,
                       maxLength: 6,
@@ -329,7 +533,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       Expanded(
                         child: Text(
                           'Mantener sesión iniciada',
-                          style: Theme.of(context).textTheme.bodyMedium,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Colors.black87,
+                          ),
                         ),
                       ),
                     ],
@@ -358,11 +564,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
-                              _errorMessage!,
-                              style: TextStyle(
-                                color: Colors.red.shade700,
-                                fontSize: 14,
-                              ),
+                            _errorMessage!,
+                            style: TextStyle(
+                              color: Colors.red.shade700,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
                             ),
                           ),
                         ],
@@ -374,6 +581,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   // Botón de acceso
                   ElevatedButton(
                     onPressed: isLoading ? null : _handleSignIn,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.emeraldGreen,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(double.infinity, 64),
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
                     child: isLoading
                         ? const SizedBox(
                             height: 24,
@@ -381,7 +597,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
                               valueColor: AlwaysStoppedAnimation<Color>(
-                                AppColors.emeraldGreen,
+                                Colors.white,
                               ),
                             ),
                           )
@@ -391,17 +607,101 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 : _isOtpSent
                                     ? 'Verificar Código'
                                     : 'Enviar Código',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                   ),
 
                   // Botón para reenviar código (si es OTP)
                   if (!_isEmail && _isOtpSent) ...[
                     const SizedBox(height: 16),
-                    TextButton(
+                    OutlinedButton(
                       onPressed: isLoading ? null : _sendOTP,
-                      child: const Text('Reenviar código'),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(
+                          color: AppColors.emeraldGreen,
+                          width: 2,
+                        ),
+                        foregroundColor: AppColors.emeraldGreen,
+                        minimumSize: const Size(double.infinity, 56),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        'Reenviar código',
+                        style: TextStyle(
+                          color: AppColors.emeraldGreen,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ],
+
+                  const SizedBox(height: 24),
+
+                  // Enlace a registro
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        '¿Tienes cuenta? ',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.black87,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => context.go('/register'),
+                        child: Text(
+                          'Regístrate ahora',
+                          style: TextStyle(
+                            color: AppColors.emeraldGreen,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Opción de colaborador
+                  OutlinedButton(
+                    onPressed: () => context.go('/colaborador'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 64),
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      side: BorderSide(
+                        color: AppColors.emeraldGreen,
+                        width: 2,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.badge_outlined,
+                          color: AppColors.emeraldGreen,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Entrar como Colaborador',
+                          style: TextStyle(
+                            color: AppColors.emeraldGreen,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),

@@ -269,6 +269,13 @@ class AuthRepositoryImpl implements AuthRepository {
       return 'Número de teléfono inválido. Verifica el formato.';
     }
 
+    // Error específico de proveedor de teléfono deshabilitado
+    if (lowerMessage.contains('phone_provider_disabled') ||
+        lowerMessage.contains('phone provider disabled') ||
+        lowerMessage.contains('sms provider') && lowerMessage.contains('disabled')) {
+      return 'Servicio de SMS temporalmente fuera de servicio. Por favor, usa correo electrónico para iniciar sesión.';
+    }
+
     if (lowerMessage.contains('password') && lowerMessage.contains('weak')) {
       return 'La contraseña es muy débil. Usa al menos 8 caracteres.';
     }
@@ -279,6 +286,10 @@ class AuthRepositoryImpl implements AuthRepository {
     }
 
     if (statusCode == 400) {
+      // Mensaje más específico para errores 400
+      if (lowerMessage.contains('phone') || lowerMessage.contains('sms')) {
+        return 'Error con el servicio de SMS. Intenta usar correo electrónico o contacta al soporte.';
+      }
       return 'Datos inválidos. Verifica la información proporcionada.';
     }
 

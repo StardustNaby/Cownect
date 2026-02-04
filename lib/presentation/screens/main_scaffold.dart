@@ -20,6 +20,30 @@ class MainScaffold extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     
     return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        title: Text(
+          'Cownect',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            color: Colors.black,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_outlined, color: Colors.black87),
+            onPressed: () => context.push('/ajustes'),
+            tooltip: 'Ajustes',
+          ),
+          IconButton(
+            icon: const Icon(Icons.person_outline, color: Colors.black87),
+            onPressed: () => context.push('/perfil'),
+            tooltip: 'Perfil',
+          ),
+        ],
+      ),
       body: navigationShell,
       bottomNavigationBar: NavigationBar(
         selectedIndex: navigationShell.currentIndex,
@@ -39,45 +63,59 @@ class MainScaffold extends StatelessWidget {
         destinations: [
           NavigationDestination(
             icon: Icon(
-              Icons.table_rows_rounded,
+              Icons.home_outlined,
               size: 28, // Ícono grande
               color: isDark ? AppColors.darkSecondary : AppColors.lightSecondary,
             ),
             selectedIcon: Icon(
-              Icons.table_rows_rounded,
+              Icons.home,
               size: 28,
               color: AppColors.emeraldGreen,
             ),
-            label: 'Inventario',
-            tooltip: 'Inventario de animales',
+            label: 'Inicio',
+            tooltip: 'Inicio del predio',
           ),
           NavigationDestination(
             icon: Icon(
-              Icons.map_rounded,
+              Icons.map_outlined,
               size: 28, // Ícono grande
               color: isDark ? AppColors.darkSecondary : AppColors.lightSecondary,
             ),
             selectedIcon: Icon(
-              Icons.map_rounded,
+              Icons.map,
               size: 28,
               color: AppColors.emeraldGreen,
             ),
-            label: 'Infraestructura',
-            tooltip: 'Mapa e infraestructura',
+            label: 'Sectores',
+            tooltip: 'Sectores del predio',
           ),
           NavigationDestination(
             icon: Icon(
-              Icons.settings_suggest_rounded,
+              Icons.pets_outlined,
               size: 28, // Ícono grande
               color: isDark ? AppColors.darkSecondary : AppColors.lightSecondary,
             ),
             selectedIcon: Icon(
-              Icons.settings_suggest_rounded,
+              Icons.pets,
               size: 28,
               color: AppColors.emeraldGreen,
             ),
-            label: 'Perfil',
-            tooltip: 'Perfil y configuración de UPP',
+            label: 'Animales',
+            tooltip: 'Animales del predio',
+          ),
+          NavigationDestination(
+            icon: Icon(
+              Icons.people_outline,
+              size: 28, // Ícono grande
+              color: isDark ? AppColors.darkSecondary : AppColors.lightSecondary,
+            ),
+            selectedIcon: Icon(
+              Icons.people,
+              size: 28,
+              color: AppColors.emeraldGreen,
+            ),
+            label: 'Colaboradores',
+            tooltip: 'Colaboradores del predio',
           ),
         ],
       ),
