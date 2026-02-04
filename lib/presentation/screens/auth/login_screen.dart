@@ -29,6 +29,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _obscurePassword = true;
   String? _errorMessage;
   bool _methodManuallySelected = false; // Rastrea si el usuario seleccionó manualmente
+  int _otpResendTimer = 0; // Temporizador para reenvío de OTP
 
   @override
   void dispose() {
@@ -88,8 +89,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await ref.read(authNotifierProvider.notifier).sendOTP(phone: phone);
       setState(() {
         _isOtpSent = true;
+        _otpResendTimer = 60; // 60 segundos
         _errorMessage = null;
       });
+
+      // Iniciar temporizador
+      _startResendTimer();
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -110,7 +115,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           final errorString = e.toString().toLowerCase();
           if (errorString.contains('phone_provider_disabled') ||
               (errorString.contains('sms provider') && errorString.contains('disabled'))) {
-            errorMsg = 'Servicio de SMS temporalmente fuera de servicio. Por favor, usa correo electrónico para iniciar sesión.';
+            errorMsg = 'El servicio de SMS no está disponible en este momento. Por favor, usa correo electrónico para iniciar sesión.';
           } else if (errorString.contains('statuscode: 400') ||
                      errorString.contains('400')) {
             errorMsg = 'Error con el servicio de SMS. Intenta usar correo electrónico o contacta al soporte.';
@@ -179,6 +184,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             : 'Código inválido. Verifica el código recibido.';
       });
     }
+  }
+
+  /// Inicia el temporizador para reenviar código OTP.
+  void _startResendTimer() {
+    Future.doWhile(() async {
+      await Future.delayed(const Duration(seconds: 1));
+      if (mounted && _otpResendTimer > 0) {
+        setState(() {
+          _otpResendTimer--;
+        });
+        return _otpResendTimer > 0;
+      }
+      return false;
+    });
   }
 
   /// Maneja el botón de acceso principal.
@@ -483,40 +502,51 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     const SizedBox(height: 16),
                   ],
 
-                  // Campo OTP (solo si es teléfono y se envió el código)
-                  if (!_isEmail && _isOtpSent) ...[
-                    TextFormField(
-                      controller: _otpController,
-                      decoration: InputDecoration(
-                        labelText: 'Código OTP',
-                        labelStyle: const TextStyle(
-                          color: Colors.black87,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        hintText: 'Ingresa el código de 6 dígitos',
-                        prefixIcon: const Icon(
-                          Icons.sms_outlined,
-                          color: Colors.black87,
-                        ),
-                        filled: true,
-                        fillColor: Colors.white,
-                      ),
-                      style: const TextStyle(color: Colors.black),
-                      keyboardType: TextInputType.number,
-                      textInputAction: TextInputAction.done,
-                      maxLength: 6,
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return 'Ingresa el código OTP';
-                        }
-                        if (value.trim().length != 6) {
-                          return 'El código debe tener 6 dígitos';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                  ],
+                  // Campo OTP (solo si es teléfono y se envió el código) - con AnimatedSwitcher
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    child: !_isEmail && _isOtpSent
+                        ? Column(
+                            key: const ValueKey('otp_field'),
+                            children: [
+                              TextFormField(
+                                controller: _otpController,
+                                decoration: InputDecoration(
+                                  labelText: 'Código OTP',
+                                  labelStyle: const TextStyle(
+                                    color: Colors.black87,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  hintText: 'Ingresa el código de 6 dígitos',
+                                  prefixIcon: const Icon(
+                                    Icons.sms_outlined,
+                                    color: Colors.black87,
+                                  ),
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                ),
+                                style: const TextStyle(color: Colors.black),
+                                keyboardType: TextInputType.number,
+                                textInputAction: TextInputAction.done,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.digitsOnly,
+                                  LengthLimitingTextInputFormatter(6),
+                                ],
+                                validator: (value) {
+                                  if (value == null || value.trim().isEmpty) {
+                                    return 'Ingresa el código OTP';
+                                  }
+                                  if (value.trim().length != 6) {
+                                    return 'El código debe tener 6 dígitos';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 16),
+                            ],
+                          )
+                        : const SizedBox.shrink(key: ValueKey('empty')),
+                  ),
 
                   // Checkbox "Mantener sesión"
                   Row(
@@ -614,33 +644,51 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                   ),
 
-                  // Botón para reenviar código (si es OTP)
-                  if (!_isEmail && _isOtpSent) ...[
-                    const SizedBox(height: 16),
-                    OutlinedButton(
-                      onPressed: isLoading ? null : _sendOTP,
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(
-                          color: AppColors.emeraldGreen,
-                          width: 2,
-                        ),
-                        foregroundColor: AppColors.emeraldGreen,
-                        minimumSize: const Size(double.infinity, 56),
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: Text(
-                        'Reenviar código',
-                        style: TextStyle(
-                          color: AppColors.emeraldGreen,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
+                  // Botón para reenviar código (si es OTP) - con temporizador
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    child: !_isEmail && _isOtpSent
+                        ? Column(
+                            key: const ValueKey('resend_button'),
+                            children: [
+                              const SizedBox(height: 16),
+                              if (_otpResendTimer > 0)
+                                Text(
+                                  'Reenviar código en $_otpResendTimer segundos',
+                                  style: TextStyle(
+                                    color: Colors.black54,
+                                    fontSize: 14,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                )
+                              else
+                                OutlinedButton(
+                                  onPressed: isLoading ? null : _sendOTP,
+                                  style: OutlinedButton.styleFrom(
+                                    side: BorderSide(
+                                      color: AppColors.emeraldGreen,
+                                      width: 2,
+                                    ),
+                                    foregroundColor: AppColors.emeraldGreen,
+                                    minimumSize: const Size(double.infinity, 56),
+                                    padding: const EdgeInsets.symmetric(vertical: 16),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'Reenviar código',
+                                    style: TextStyle(
+                                      color: AppColors.emeraldGreen,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          )
+                        : const SizedBox.shrink(key: ValueKey('empty_resend')),
+                  ),
 
                   const SizedBox(height: 24),
 

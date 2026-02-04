@@ -195,7 +195,7 @@ class _PrediosHomeScreenState extends ConsumerState<PrediosHomeScreen> {
   /// Construye una tarjeta de predio.
   Widget _buildPredioCard(PredioEntity predio) {
     final ubicacionCompleta = '${predio.localidad}, ${predio.municipio}, ${predio.estado}';
-    final clavePGN = predio.claveCatastral ?? predio.upp;
+    final clavePGN = predio.clavePGN;
 
     return Card(
       elevation: 1,

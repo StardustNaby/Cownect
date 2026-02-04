@@ -61,8 +61,26 @@ class AuthNotifier extends StateNotifier<AuthState> {
     this._supabaseClient,
     this._prefs,
   ) : super(Loading()) {
+    // Verificar sesión actual al inicializar
+    _checkCurrentSession();
     // Escuchar cambios en el estado de autenticación de Supabase
     _authSubscription = _supabaseClient.auth.onAuthStateChange.listen(_handleAuthStateChange);
+  }
+
+  /// Verifica si hay una sesión activa al inicializar el notifier.
+  Future<void> _checkCurrentSession() async {
+    try {
+      final session = _supabaseClient.auth.currentSession;
+      if (session != null && !session.isExpired) {
+        // Hay una sesión válida, cargar el usuario
+        await _loadUser();
+      } else {
+        // No hay sesión o está expirada
+        state = Unauthenticated();
+      }
+    } catch (e) {
+      state = Unauthenticated();
+    }
   }
 
   @override
@@ -117,17 +135,44 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = Loading();
 
     try {
+      // Primero verificar la sesión actual de Supabase
+      final session = _supabaseClient.auth.currentSession;
+      
+      if (session != null && !session.isExpired) {
+        // Hay una sesión válida, intentar refrescar si es necesario
+        try {
+          // Intentar refrescar la sesión si está cerca de expirar
+          if (session.expiresAt != null) {
+            final expiresAt = DateTime.fromMillisecondsSinceEpoch(session.expiresAt! * 1000);
+            final now = DateTime.now();
+            final diff = expiresAt.difference(now);
+            
+            // Si la sesión expira en menos de 5 minutos, refrescar
+            if (diff.inMinutes < 5) {
+              await _supabaseClient.auth.refreshSession();
+            }
+          }
+          
+          // Cargar el usuario
+          await _loadUser();
+          return;
+        } catch (e) {
+          // Si falla el refresh, intentar cargar usuario de todas formas
+          await _loadUser();
+          return;
+        }
+      }
+
       // Verificar si el usuario quiere mantener la sesión
       final rememberMe = _prefs.getBool(_rememberMeKey) ?? false;
 
       if (!rememberMe) {
-        // Si no quiere mantener la sesión, cerrar sesión
-        await _authRepository.signOut();
+        // Si no quiere mantener la sesión y no hay sesión activa, cerrar
         state = Unauthenticated();
         return;
       }
 
-      // Verificar si hay un usuario autenticado
+      // Intentar cargar usuario (puede haber una sesión que no detectamos)
       final user = await _authRepository.getCurrentUser();
       if (user != null) {
         state = Authenticated(user);

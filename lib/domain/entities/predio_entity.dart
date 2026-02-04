@@ -43,6 +43,12 @@ class PredioEntity {
   /// UPP (Unidad de Producción Pecuaria) - identificador único del predio (NOM-001-SAG/GAN-2015).
   final String upp;
 
+  /// Clave PGN (Padrón Ganadero Nacional) - 12 dígitos (NOM-001-SAG/GAN-2015).
+  final String clavePGN;
+
+  /// Propietario Legal - Nombre de la persona física o moral (NOM-001-SAG/GAN-2015).
+  final String propietarioLegal;
+
   /// Tipo de producción pecuaria (NOM-001-SAG/GAN-2015).
   /// Valores: BOVINOS, PORCINOS, AVES, OVINOS, CAPRINOS, EQUINOS, OTRO
   final String tipoProduccion;
@@ -88,6 +94,8 @@ class PredioEntity {
     this.latitud,
     this.longitud,
     required this.upp,
+    required this.clavePGN,
+    required this.propietarioLegal,
     required this.tipoProduccion,
     this.claveCatastral,
     required this.fechaCreacion,
@@ -114,6 +122,10 @@ class PredioEntity {
         assert(
           longitud == null || (longitud >= -180 && longitud <= 180),
           'La longitud debe estar entre -180 y 180',
+        ),
+        assert(
+          clavePGN.length == 12 && RegExp(r'^\d{12}$').hasMatch(clavePGN),
+          'La Clave PGN debe tener exactamente 12 dígitos numéricos',
         );
 
   /// Crea una copia de la entidad con los campos modificados.
@@ -131,6 +143,8 @@ class PredioEntity {
     double? latitud,
     double? longitud,
     String? upp,
+    String? clavePGN,
+    String? propietarioLegal,
     String? tipoProduccion,
     String? claveCatastral,
     DateTime? fechaCreacion,
@@ -149,6 +163,8 @@ class PredioEntity {
       latitud: latitud ?? this.latitud,
       longitud: longitud ?? this.longitud,
       upp: upp ?? this.upp,
+      clavePGN: clavePGN ?? this.clavePGN,
+      propietarioLegal: propietarioLegal ?? this.propietarioLegal,
       tipoProduccion: tipoProduccion ?? this.tipoProduccion,
       claveCatastral: claveCatastral ?? this.claveCatastral,
       fechaCreacion: fechaCreacion ?? this.fechaCreacion,
