@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../domain/entities/usuario_entity.dart';
@@ -48,7 +49,7 @@ class Authenticated extends AuthState {
 class AuthNotifier extends StateNotifier<AuthState> {
   final AuthRepository _authRepository;
   final FirebaseAuth _firebaseAuth;
-  final SharedPreferences _prefs;
+  final SharedPreferences? _prefs;
 
   // Clave para almacenar la preferencia de "mantener sesión"
   static const String _rememberMeKey = 'remember_me';
@@ -56,12 +57,25 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   StreamSubscription? _authSubscription;
 
+  /// Constructor principal que requiere SharedPreferences.
   AuthNotifier(
     this._authRepository,
     this._firebaseAuth,
     this._prefs,
   ) : super(Loading()) {
     // Verificar sesión actual al inicializar
+    _checkCurrentSession();
+    // Escuchar cambios en el estado de autenticación de Firebase
+    _authSubscription = _firebaseAuth.authStateChanges().listen(_handleAuthStateChange);
+  }
+
+  /// Constructor temporal para cuando SharedPreferences aún no está listo.
+  /// Este constructor permite que la app cargue mientras SharedPreferences se inicializa.
+  AuthNotifier._temporary(
+    this._authRepository,
+    this._firebaseAuth,
+  ) : _prefs = null, super(Loading()) {
+    // Verificar sesión actual sin usar SharedPreferences
     _checkCurrentSession();
     // Escuchar cambios en el estado de autenticación de Firebase
     _authSubscription = _firebaseAuth.authStateChanges().listen(_handleAuthStateChange);
@@ -136,13 +150,15 @@ class AuthNotifier extends StateNotifier<AuthState> {
         return;
       }
 
-      // Verificar si el usuario quiere mantener la sesión
-      final rememberMe = _prefs.getBool(_rememberMeKey) ?? false;
+      // Verificar si el usuario quiere mantener la sesión (solo si _prefs está disponible)
+      if (_prefs != null) {
+        final rememberMe = _prefs!.getBool(_rememberMeKey) ?? false;
 
-      if (!rememberMe) {
-        // Si no quiere mantener la sesión y no hay sesión activa, cerrar
-        state = Unauthenticated();
-        return;
+        if (!rememberMe) {
+          // Si no quiere mantener la sesión y no hay sesión activa, cerrar
+          state = Unauthenticated();
+          return;
+        }
       }
 
       // Intentar cargar usuario (puede haber una sesión que no detectamos)
@@ -177,12 +193,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
         password: password,
       );
 
-      // Guardar preferencia de "mantener sesión"
-      await _prefs.setBool(_rememberMeKey, rememberMe);
-      if (rememberMe) {
-        await _prefs.setString(_userEmailKey, email);
-      } else {
-        await _prefs.remove(_userEmailKey);
+      // Guardar preferencia de "mantener sesión" (solo si _prefs está disponible)
+      if (_prefs != null) {
+        await _prefs!.setBool(_rememberMeKey, rememberMe);
+        if (rememberMe) {
+          await _prefs!.setString(_userEmailKey, email);
+        } else {
+          await _prefs!.remove(_userEmailKey);
+        }
       }
 
       state = Authenticated(user);
@@ -213,12 +231,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
         otp: otp,
       );
 
-      // Guardar preferencia de "mantener sesión"
-      await _prefs.setBool(_rememberMeKey, rememberMe);
-      if (rememberMe) {
-        await _prefs.setString(_userEmailKey, phone);
-      } else {
-        await _prefs.remove(_userEmailKey);
+      // Guardar preferencia de "mantener sesión" (solo si _prefs está disponible)
+      if (_prefs != null) {
+        await _prefs!.setBool(_rememberMeKey, rememberMe);
+        if (rememberMe) {
+          await _prefs!.setString(_userEmailKey, phone);
+        } else {
+          await _prefs!.remove(_userEmailKey);
+        }
       }
 
       state = Authenticated(user);
@@ -258,13 +278,15 @@ class AuthNotifier extends StateNotifier<AuthState> {
         fechaNacimiento: fechaNacimiento,
       );
 
-      // Guardar preferencia de "mantener sesión"
-      await _prefs.setBool(_rememberMeKey, rememberMe);
-      if (rememberMe) {
-        final identifier = email ?? phone ?? '';
-        await _prefs.setString(_userEmailKey, identifier);
-      } else {
-        await _prefs.remove(_userEmailKey);
+      // Guardar preferencia de "mantener sesión" (solo si _prefs está disponible)
+      if (_prefs != null) {
+        await _prefs!.setBool(_rememberMeKey, rememberMe);
+        if (rememberMe) {
+          final identifier = email ?? phone ?? '';
+          await _prefs!.setString(_userEmailKey, identifier);
+        } else {
+          await _prefs!.remove(_userEmailKey);
+        }
       }
 
       state = Authenticated(user);
@@ -284,9 +306,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       await _authRepository.signOut();
 
-      // Limpiar preferencias
-      await _prefs.remove(_rememberMeKey);
-      await _prefs.remove(_userEmailKey);
+      // Limpiar preferencias (solo si _prefs está disponible)
+      if (_prefs != null) {
+        await _prefs!.remove(_rememberMeKey);
+        await _prefs!.remove(_userEmailKey);
+      }
 
       state = Unauthenticated();
     } catch (e) {
@@ -305,12 +329,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   /// Obtiene el email guardado si existe (para "mantener sesión").
   String? getSavedEmail() {
-    return _prefs.getString(_userEmailKey);
+    return _prefs?.getString(_userEmailKey);
   }
 
   /// Verifica si el usuario quiere mantener la sesión.
   bool getRememberMe() {
-    return _prefs.getBool(_rememberMeKey) ?? false;
+    return _prefs?.getBool(_rememberMeKey) ?? false;
   }
 }
 
@@ -322,17 +346,39 @@ final sharedPreferencesProvider = FutureProvider<SharedPreferences>((ref) async 
 /// Provider que expone el AuthNotifier.
 /// 
 /// Este provider gestiona el estado de autenticación de la aplicación.
+/// Maneja correctamente el estado de carga de SharedPreferences sin lanzar excepciones.
+/// 
+/// IMPORTANTE: Este provider siempre retorna un AuthNotifier válido, incluso cuando
+/// SharedPreferences aún no está listo. El notifier funcionará sin SharedPreferences
+/// hasta que esté disponible, momento en el cual se recreará automáticamente.
 final authNotifierProvider =
     StateNotifierProvider<AuthNotifier, AuthState>((ref) {
   final authRepository = ref.watch(authRepositoryProvider);
   final firebaseAuth = ref.watch(firebaseAuthProvider);
+  
+  // Intentar obtener SharedPreferences de forma asíncrona
+  // Si está disponible, usarlo; si no, crear notifier temporal
   final prefsAsync = ref.watch(sharedPreferencesProvider);
-
-  // Esperar a que SharedPreferences esté listo
+  
+  // Usar whenData para obtener SharedPreferences cuando esté disponible
+  // Si está loading o hay error, crear notifier temporal
   return prefsAsync.when(
-    data: (prefs) => AuthNotifier(authRepository, firebaseAuth, prefs),
-    loading: () => throw Exception('SharedPreferences no está listo'),
-    error: (error, stack) => throw Exception('Error al cargar SharedPreferences: $error'),
+    data: (prefs) {
+      // SharedPreferences está listo, crear notifier completo
+      return AuthNotifier(authRepository, firebaseAuth, prefs);
+    },
+    loading: () {
+      // SharedPreferences aún no está listo, crear notifier temporal
+      // Este notifier funcionará sin SharedPreferences hasta que esté disponible
+      return AuthNotifier._temporary(authRepository, firebaseAuth);
+    },
+    error: (error, stack) {
+      // Error al cargar SharedPreferences, crear notifier temporal
+      // La app puede funcionar sin SharedPreferences (solo perderá la opción "mantener sesión")
+      debugPrint('⚠️ Error al cargar SharedPreferences: $error');
+      debugPrint('La app continuará funcionando, pero la opción "mantener sesión" no estará disponible.');
+      return AuthNotifier._temporary(authRepository, firebaseAuth);
+    },
   );
 });
 

@@ -19,7 +19,9 @@ final bovinosProvider = FutureProvider.family<List<BovinoEntity>, String?>((ref,
 /// Muestra un GridView de 2 columnas con tarjetas elegantes para cada bovino.
 /// Incluye skeleton loader mientras carga y estado vacío profesional.
 class InventoryScreen extends ConsumerStatefulWidget {
-  const InventoryScreen({super.key});
+  final String? predioId;
+  
+  const InventoryScreen({super.key, this.predioId});
 
   @override
   ConsumerState<InventoryScreen> createState() => _InventoryScreenState();
@@ -28,7 +30,6 @@ class InventoryScreen extends ConsumerStatefulWidget {
 class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   final TextEditingController _searchController = TextEditingController();
   bool _isSearchVisible = false;
-  String? _uppId; // TODO: Obtener de la UPP activa del usuario
 
   @override
   void dispose() {
@@ -51,7 +52,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bovinosAsync = ref.watch(bovinosProvider(_uppId));
+    final bovinosAsync = ref.watch(bovinosProvider(widget.predioId));
 
     return Scaffold(
       backgroundColor: AppColors.lightBackground,
@@ -113,7 +114,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 
           return RefreshIndicator(
             onRefresh: () async {
-              ref.invalidate(bovinosProvider(_uppId));
+              ref.invalidate(bovinosProvider(widget.predioId));
             },
             child: GridView.builder(
               padding: const EdgeInsets.all(16),
@@ -328,7 +329,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             const SizedBox(height: 48),
             ElevatedButton.icon(
               onPressed: () {
-                ref.invalidate(bovinosProvider(_uppId));
+                ref.invalidate(bovinosProvider(widget.predioId));
               },
               icon: const Icon(Icons.refresh, size: 24),
               label: const Text(

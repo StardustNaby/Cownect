@@ -39,19 +39,26 @@ class PredioRepositoryImpl implements PredioRepository {
   @override
   Future<List<PredioEntity>> getPrediosByUsuario(String idUsuario) async {
     try {
+      // Consulta sin orderBy para evitar necesidad de índice compuesto
+      // Ordenaremos en memoria después
       final querySnapshot = await _firestore
           .collection('predio')
           .where('id_usuario', isEqualTo: idUsuario)
-          .orderBy('fecha_creacion', descending: true)
           .get();
 
       if (querySnapshot.docs.isEmpty) {
         return [];
       }
 
-      return querySnapshot.docs
+      // Convertir a entidades y ordenar por fecha de creación (más reciente primero)
+      final predios = querySnapshot.docs
           .map((doc) => PredioModel.fromFirestore(doc).toEntity())
           .toList();
+      
+      // Ordenar en memoria por fecha de creación descendente
+      predios.sort((a, b) => b.fechaCreacion.compareTo(a.fechaCreacion));
+      
+      return predios;
     } on SocketException catch (_) {
       throw NoInternetException();
     } on FirebaseException catch (e) {

@@ -10,6 +10,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Inicializar Firebase con las opciones de la plataforma actual
+  // Usar manejo de errores robusto para evitar que la app se bloquee
   try {
     // Verificar si Firebase ya está inicializado
     if (Firebase.apps.isEmpty) {
@@ -17,17 +18,21 @@ void main() async {
         options: DefaultFirebaseOptions.currentPlatform,
       );
     }
-  } catch (e) {
-    // Si hay un error de inicialización, mostrar información útil
-    debugPrint('Error al inicializar Firebase: $e');
+  } catch (e, stackTrace) {
+    // Si hay un error de inicialización, registrar información útil
+    // pero NO bloquear la app - permitir que cargue y muestre el error en la UI
+    debugPrint('⚠️ Error al inicializar Firebase: $e');
+    debugPrint('Stack trace: $stackTrace');
     debugPrint(
-      'Para Windows, asegúrate de haber registrado tu app en Firebase Console '
+      '💡 Para Windows, asegúrate de haber registrado tu app en Firebase Console '
       'y obtenido el App ID correcto. Ejecuta: flutterfire configure --platforms=windows',
     );
-    // Re-lanzar el error para que sea visible
-    rethrow;
+    // NO re-lanzar el error - permitir que la app continúe
+    // El router manejará la navegación y mostrará errores apropiados
   }
 
+  // Ejecutar la app incluso si Firebase falló
+  // El router y los providers manejarán los errores de forma elegante
   runApp(
     const ProviderScope(
       child: CownectApp(),
@@ -47,8 +52,18 @@ class _CownectAppState extends ConsumerState<CownectApp> {
   void initState() {
     super.initState();
     // Verificar si hay una sesión activa al iniciar la app
+    // Usar addPostFrameCallback para evitar bloqueos durante la inicialización
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(authNotifierProvider.notifier).checkAuth();
+      // Verificar autenticación de forma asíncrona sin bloquear la UI
+      Future.microtask(() async {
+        try {
+          await ref.read(authNotifierProvider.notifier).checkAuth();
+        } catch (e) {
+          // Si hay error al verificar autenticación, no bloquear la app
+          // El estado se establecerá como Unauthenticated automáticamente
+          debugPrint('⚠️ Error al verificar autenticación: $e');
+        }
+      });
     });
   }
 
@@ -58,6 +73,8 @@ class _CownectAppState extends ConsumerState<CownectApp> {
     final lightTheme = ref.watch(lightThemeProvider);
     final darkTheme = ref.watch(darkThemeProvider);
     final themeMode = ref.watch(themeModeProvider);
+    // Obtener el router con redirect dinámico basado en autenticación
+    final router = ref.watch(appRouterProvider);
 
     return MaterialApp.router(
       title: 'Cownect',
@@ -68,7 +85,7 @@ class _CownectAppState extends ConsumerState<CownectApp> {
       darkTheme: darkTheme,
       // Usar el modo de tema desde el provider
       themeMode: themeMode,
-      routerConfig: appRouter,
+      routerConfig: router,
     );
   }
 }

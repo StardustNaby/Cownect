@@ -4,54 +4,32 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../domain/entities/predio_entity.dart';
+import '../../../data/repositories/predio_repository_impl.dart';
+import '../../providers/auth_provider.dart';
+import '../../../core/providers/predio_provider.dart';
+
+/// Provider para obtener los predios del usuario actual.
+final prediosUsuarioProvider = FutureProvider<List<PredioEntity>>((ref) async {
+  final authState = ref.watch(authNotifierProvider);
+  if (authState is! Authenticated) {
+    return [];
+  }
+  
+  final repository = ref.watch(predioRepositoryProvider);
+  return await repository.getPrediosByUsuario(authState.user.id);
+});
 
 /// Pantalla inicial que muestra las tarjetas de predios.
 /// 
 /// Diseño profesional con tarjetas blancas, alto contraste y accesibilidad para campo.
 /// Muestra Clave PGN, Ubicación y permite abrir mapa GPS.
-class PrediosHomeScreen extends ConsumerStatefulWidget {
+class PrediosHomeScreen extends ConsumerWidget {
   const PrediosHomeScreen({super.key});
 
   @override
-  ConsumerState<PrediosHomeScreen> createState() => _PrediosHomeScreenState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final prediosAsync = ref.watch(prediosUsuarioProvider);
 
-class _PrediosHomeScreenState extends ConsumerState<PrediosHomeScreen> {
-  // TODO: Obtener predios del usuario desde el provider/repository
-  final List<PredioEntity> _predios = []; // Lista vacía por ahora
-
-  /// Abre la ubicación en el mapa GPS.
-  Future<void> _abrirMapaGPS(double? latitud, double? longitud, String direccion) async {
-    if (latitud != null && longitud != null) {
-      // Abrir en Google Maps
-      final url = Uri.parse(
-        'https://www.google.com/maps/search/?api=1&query=$latitud,$longitud',
-      );
-      if (await canLaunchUrl(url)) {
-        await launchUrl(url, mode: LaunchMode.externalApplication);
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No se pudo abrir el mapa'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    } else {
-      // Si no hay coordenadas, buscar por dirección
-      final url = Uri.parse(
-        'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(direccion)}',
-      );
-      if (await canLaunchUrl(url)) {
-        await launchUrl(url, mode: LaunchMode.externalApplication);
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.lightBackground, // #f5f5f5
       appBar: AppBar(
@@ -79,9 +57,85 @@ class _PrediosHomeScreenState extends ConsumerState<PrediosHomeScreen> {
         ],
       ),
       body: SafeArea(
-        child: _predios.isEmpty
-            ? _buildEmptyState()
-            : _buildPrediosList(),
+        child: prediosAsync.when(
+          data: (predios) => predios.isEmpty
+              ? _buildEmptyState(context)
+              : _buildPrediosList(context, ref, predios),
+          loading: () => const Center(
+            child: CircularProgressIndicator(),
+          ),
+          error: (error, stack) => SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.error_outline,
+                  size: 64,
+                  color: Colors.red.shade700,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Error al cargar predios',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: Colors.black87,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.red.shade300,
+                      width: 1,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        error.toString(),
+                        style: TextStyle(
+                          color: Colors.red.shade700,
+                          fontSize: 14,
+                        ),
+                        textAlign: TextAlign.left,
+                      ),
+                      if (error.toString().contains('index')) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          'Nota: Este error se ha solucionado automáticamente. Intenta nuevamente.',
+                          style: TextStyle(
+                            color: Colors.orange.shade700,
+                            fontSize: 12,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  onPressed: () => ref.refresh(prediosUsuarioProvider),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Reintentar'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.emeraldGreen,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/predio/registro'),
@@ -99,8 +153,43 @@ class _PrediosHomeScreenState extends ConsumerState<PrediosHomeScreen> {
     );
   }
 
+  /// Abre la ubicación en el mapa GPS.
+  static Future<void> _abrirMapaGPS(
+    BuildContext context,
+    double? latitud,
+    double? longitud,
+    String direccion,
+  ) async {
+    if (latitud != null && longitud != null) {
+      // Abrir en Google Maps
+      final url = Uri.parse(
+        'https://www.google.com/maps/search/?api=1&query=$latitud,$longitud',
+      );
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      } else {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No se pudo abrir el mapa'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } else {
+      // Si no hay coordenadas, buscar por dirección
+      final url = Uri.parse(
+        'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(direccion)}',
+      );
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      }
+    }
+  }
+
   /// Construye el estado vacío cuando no hay predios.
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(BuildContext context) {
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
@@ -157,7 +246,11 @@ class _PrediosHomeScreenState extends ConsumerState<PrediosHomeScreen> {
   }
 
   /// Construye la lista de predios.
-  Widget _buildPrediosList() {
+  Widget _buildPrediosList(
+    BuildContext context,
+    WidgetRef ref,
+    List<PredioEntity> predios,
+  ) {
     return Column(
       children: [
         // Título
@@ -180,11 +273,11 @@ class _PrediosHomeScreenState extends ConsumerState<PrediosHomeScreen> {
         Expanded(
           child: ListView.separated(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-            itemCount: _predios.length,
+            itemCount: predios.length,
             separatorBuilder: (context, index) => const SizedBox(height: 16),
             itemBuilder: (context, index) {
-              final predio = _predios[index];
-              return _buildPredioCard(predio);
+              final predio = predios[index];
+              return _buildPredioCard(context, ref, predio);
             },
           ),
         ),
@@ -193,7 +286,11 @@ class _PrediosHomeScreenState extends ConsumerState<PrediosHomeScreen> {
   }
 
   /// Construye una tarjeta de predio.
-  Widget _buildPredioCard(PredioEntity predio) {
+  Widget _buildPredioCard(
+    BuildContext context,
+    WidgetRef ref,
+    PredioEntity predio,
+  ) {
     final ubicacionCompleta = '${predio.localidad}, ${predio.municipio}, ${predio.estado}';
     final clavePGN = predio.clavePGN;
 
@@ -209,6 +306,8 @@ class _PrediosHomeScreenState extends ConsumerState<PrediosHomeScreen> {
       color: Colors.white,
       child: InkWell(
         onTap: () {
+          // Establecer el predio actual en el provider
+          ref.read(currentPredioIdProvider.notifier).state = predio.id;
           // Navegar al predio seleccionado
           context.go('/predio/home');
         },
@@ -283,6 +382,7 @@ class _PrediosHomeScreenState extends ConsumerState<PrediosHomeScreen> {
                         size: 24,
                       ),
                       onPressed: () => _abrirMapaGPS(
+                        context,
                         predio.latitud,
                         predio.longitud,
                         predio.direccion,

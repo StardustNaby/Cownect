@@ -20,12 +20,12 @@ class RegisterScreen extends ConsumerStatefulWidget {
 class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nombreController = TextEditingController();
+  final _apellidoController = TextEditingController();
   final _emailController = TextEditingController();
   final _telefonoController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _fechaNacimientoController = TextEditingController();
-  final _otpController = TextEditingController();
 
   bool _registroPorEmail = true; // true = Email, false = Celular
   bool _obscurePassword = true;
@@ -34,20 +34,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   String? _errorMessage;
 
   @override
-  void initState() {
-    super.initState();
-    // Iniciar temporizador si es necesario
-  }
-
-  @override
   void dispose() {
     _nombreController.dispose();
+    _apellidoController.dispose();
     _emailController.dispose();
     _telefonoController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _fechaNacimientoController.dispose();
-    _otpController.dispose();
     super.dispose();
   }
 
@@ -81,7 +75,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     }
   }
 
-
   /// Registra un nuevo usuario.
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) return;
@@ -93,7 +86,25 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       return;
     }
 
-    // Validar contraseñas (tanto para email como celular)
+    // Validar que se haya ingresado correo O teléfono (no ambos, uno u otro)
+    final email = _emailController.text.trim();
+    final telefono = _telefonoController.text.trim();
+    
+    if (_registroPorEmail && email.isEmpty) {
+      setState(() {
+        _errorMessage = 'Debes ingresar un correo electrónico.';
+      });
+      return;
+    }
+    
+    if (!_registroPorEmail && telefono.isEmpty) {
+      setState(() {
+        _errorMessage = 'Debes ingresar un número de teléfono.';
+      });
+      return;
+    }
+
+    // Validar contraseñas
     if (_passwordController.text != _confirmPasswordController.text) {
       setState(() {
         _errorMessage = 'Las contraseñas no coinciden.';
@@ -106,27 +117,17 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     });
 
     try {
-      if (_registroPorEmail) {
-        // Registro por email
-        await ref.read(authNotifierProvider.notifier).signUp(
-              email: _emailController.text.trim(),
-              phone: null,
-              password: _passwordController.text,
-              nombreCompleto: _nombreController.text.trim(),
-              fechaNacimiento: _fechaNacimiento!,
-              rememberMe: false,
-            );
-      } else {
-        // Registro por celular - también requiere email y contraseña
-        await ref.read(authNotifierProvider.notifier).signUp(
-              email: _emailController.text.trim(),
-              phone: _telefonoController.text.trim(),
-              password: _passwordController.text,
-              nombreCompleto: _nombreController.text.trim(),
-              fechaNacimiento: _fechaNacimiento!,
-              rememberMe: false,
-            );
-      }
+      // Combinar nombre y apellido en nombreCompleto
+      final nombreCompleto = '${_nombreController.text.trim()} ${_apellidoController.text.trim()}'.trim();
+      
+      await ref.read(authNotifierProvider.notifier).signUp(
+            email: _registroPorEmail ? email : null,
+            phone: !_registroPorEmail ? telefono : null,
+            password: _passwordController.text,
+            nombreCompleto: nombreCompleto,
+            fechaNacimiento: _fechaNacimiento!,
+            rememberMe: false,
+          );
 
       if (mounted) {
         context.go('/predios');
@@ -192,7 +193,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 ),
                 const SizedBox(height: 40),
 
-                // Selector de método de registro (ToggleButtons)
+                // Selector de método de registro (Correo O Celular)
                 Container(
                   decoration: BoxDecoration(
                     color: Colors.white,
@@ -202,71 +203,106 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       width: 2,
                     ),
                   ),
-                  child: ToggleButtons(
-                    isSelected: [_registroPorEmail, !_registroPorEmail],
-                    onPressed: (index) {
-                      setState(() {
-                        _registroPorEmail = index == 0;
-                        _errorMessage = null;
-                        // Limpiar campos al cambiar
-                        if (_registroPorEmail) {
-                          _telefonoController.clear();
-                        } else {
-                          // No limpiar email/contraseña porque también se necesitan
-                        }
-                      });
-                    },
-                    borderRadius: BorderRadius.circular(12),
-                    selectedColor: Colors.white,
-                    fillColor: AppColors.emeraldGreen,
-                    color: Colors.black87,
-                    constraints: const BoxConstraints(
-                      minHeight: 56,
-                      minWidth: double.infinity,
-                    ),
+                  child: Row(
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.email_outlined,
-                              size: 24,
-                              color: _registroPorEmail ? Colors.white : Colors.black87,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Registro por Correo',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: _registroPorEmail ? Colors.white : Colors.black87,
+                      // Botón Correo
+                      Expanded(
+                        child: InkWell(
+                          onTap: () {
+                            setState(() {
+                              _registroPorEmail = true;
+                              _errorMessage = null;
+                              _telefonoController.clear();
+                            });
+                          },
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(12),
+                            bottomLeft: Radius.circular(12),
+                          ),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            decoration: BoxDecoration(
+                              color: _registroPorEmail 
+                                  ? AppColors.emeraldGreen 
+                                  : Colors.transparent,
+                              borderRadius: const BorderRadius.only(
+                                topLeft: Radius.circular(12),
+                                bottomLeft: Radius.circular(12),
                               ),
                             ),
-                          ],
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.email_outlined,
+                                  size: 24,
+                                  color: _registroPorEmail ? Colors.white : Colors.black87,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Correo',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: _registroPorEmail ? Colors.white : Colors.black87,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.phone_outlined,
-                              size: 24,
-                              color: !_registroPorEmail ? Colors.white : Colors.black87,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Registro por Celular',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: !_registroPorEmail ? Colors.white : Colors.black87,
+                      // Divider
+                      Container(
+                        width: 1,
+                        height: 40,
+                        color: Colors.grey.shade400,
+                      ),
+                      // Botón Celular
+                      Expanded(
+                        child: InkWell(
+                          onTap: () {
+                            setState(() {
+                              _registroPorEmail = false;
+                              _errorMessage = null;
+                              _emailController.clear();
+                            });
+                          },
+                          borderRadius: const BorderRadius.only(
+                            topRight: Radius.circular(12),
+                            bottomRight: Radius.circular(12),
+                          ),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            decoration: BoxDecoration(
+                              color: !_registroPorEmail 
+                                  ? AppColors.emeraldGreen 
+                                  : Colors.transparent,
+                              borderRadius: const BorderRadius.only(
+                                topRight: Radius.circular(12),
+                                bottomRight: Radius.circular(12),
                               ),
                             ),
-                          ],
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.phone_outlined,
+                                  size: 24,
+                                  color: !_registroPorEmail ? Colors.white : Colors.black87,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Celular',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: !_registroPorEmail ? Colors.white : Colors.black87,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -274,11 +310,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 ),
                 const SizedBox(height: 32),
 
-                // Nombre Completo
+                // Nombre
                 TextFormField(
                   controller: _nombreController,
                   decoration: InputDecoration(
-                    labelText: 'Nombre Completo *',
+                    labelText: 'Nombre *',
                     labelStyle: const TextStyle(
                       color: Colors.black87,
                       fontWeight: FontWeight.w500,
@@ -294,23 +330,53 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   textInputAction: TextInputAction.next,
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
-                      return 'El nombre completo es obligatorio';
+                      return 'El nombre es obligatorio';
                     }
-                    if (value.trim().length < 3) {
-                      return 'El nombre debe tener al menos 3 caracteres';
+                    if (value.trim().length < 2) {
+                      return 'El nombre debe tener al menos 2 caracteres';
                     }
                     return null;
                   },
                 ),
                 const SizedBox(height: 20),
 
-                // Campos según el método de registro seleccionado
+                // Apellido
+                TextFormField(
+                  controller: _apellidoController,
+                  decoration: InputDecoration(
+                    labelText: 'Apellido *',
+                    labelStyle: const TextStyle(
+                      color: Colors.black87,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.person_outline,
+                      color: Colors.black87,
+                    ),
+                    filled: true,
+                    fillColor: Colors.white,
+                  ),
+                  style: const TextStyle(color: Colors.black),
+                  textInputAction: TextInputAction.next,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'El apellido es obligatorio';
+                    }
+                    if (value.trim().length < 2) {
+                      return 'El apellido debe tener al menos 2 caracteres';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 20),
+
+                // Correo O Celular (según selección)
                 if (_registroPorEmail) ...[
-                  // Registro por Email
+                  // Campo de Correo
                   TextFormField(
                     controller: _emailController,
                     decoration: InputDecoration(
-                      labelText: 'Email *',
+                      labelText: 'Correo Electrónico *',
                       labelStyle: const TextStyle(
                         color: Colors.black87,
                         fontWeight: FontWeight.w500,
@@ -327,7 +393,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     textInputAction: TextInputAction.next,
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) {
-                        return 'El email es obligatorio';
+                        return 'El correo electrónico es obligatorio';
                       }
                       if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+')
                           .hasMatch(value.trim())) {
@@ -336,92 +402,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       return null;
                     },
                   ),
-                  const SizedBox(height: 20),
-                  TextFormField(
-                    controller: _passwordController,
-                    decoration: InputDecoration(
-                      labelText: 'Contraseña *',
-                      labelStyle: const TextStyle(
-                        color: Colors.black87,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      prefixIcon: const Icon(
-                        Icons.lock_outline,
-                        color: Colors.black87,
-                      ),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword 
-                              ? Icons.visibility_outlined 
-                              : Icons.visibility_off_outlined,
-                          color: Colors.black87,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _obscurePassword = !_obscurePassword;
-                          });
-                        },
-                      ),
-                      filled: true,
-                      fillColor: Colors.white,
-                    ),
-                    style: const TextStyle(color: Colors.black),
-                    obscureText: _obscurePassword,
-                    textInputAction: TextInputAction.next,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'La contraseña es obligatoria';
-                      }
-                      if (value.length < 6) {
-                        return 'La contraseña debe tener al menos 6 caracteres';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 20),
-                  TextFormField(
-                    controller: _confirmPasswordController,
-                    decoration: InputDecoration(
-                      labelText: 'Confirmar Contraseña *',
-                      labelStyle: const TextStyle(
-                        color: Colors.black87,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      prefixIcon: const Icon(
-                        Icons.lock_outline,
-                        color: Colors.black87,
-                      ),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscureConfirmPassword 
-                              ? Icons.visibility_outlined 
-                              : Icons.visibility_off_outlined,
-                          color: Colors.black87,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _obscureConfirmPassword = !_obscureConfirmPassword;
-                          });
-                        },
-                      ),
-                      filled: true,
-                      fillColor: Colors.white,
-                    ),
-                    style: const TextStyle(color: Colors.black),
-                    obscureText: _obscureConfirmPassword,
-                    textInputAction: TextInputAction.next,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Confirma tu contraseña';
-                      }
-                      if (value != _passwordController.text) {
-                        return 'Las contraseñas no coinciden';
-                      }
-                      return null;
-                    },
-                  ),
                 ] else ...[
-                  // Registro por Celular - también requiere email y contraseña
+                  // Campo de Teléfono
                   TextFormField(
                     controller: _telefonoController,
                     decoration: InputDecoration(
@@ -460,122 +442,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       return null;
                     },
                   ),
-                  const SizedBox(height: 20),
-                  // Email también requerido para registro con teléfono
-                  TextFormField(
-                    controller: _emailController,
-                    decoration: InputDecoration(
-                      labelText: 'Email *',
-                      labelStyle: const TextStyle(
-                        color: Colors.black87,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      prefixIcon: const Icon(
-                        Icons.email_outlined,
-                        color: Colors.black87,
-                      ),
-                      filled: true,
-                      fillColor: Colors.white,
-                      helperText: 'Necesario para iniciar sesión con contraseña',
-                    ),
-                    style: const TextStyle(color: Colors.black),
-                    keyboardType: TextInputType.emailAddress,
-                    textInputAction: TextInputAction.next,
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'El email es obligatorio';
-                      }
-                      if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+')
-                          .hasMatch(value.trim())) {
-                        return 'Ingresa un correo electrónico válido';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 20),
-                  TextFormField(
-                    controller: _passwordController,
-                    decoration: InputDecoration(
-                      labelText: 'Contraseña *',
-                      labelStyle: const TextStyle(
-                        color: Colors.black87,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      prefixIcon: const Icon(
-                        Icons.lock_outline,
-                        color: Colors.black87,
-                      ),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword 
-                              ? Icons.visibility_outlined 
-                              : Icons.visibility_off_outlined,
-                          color: Colors.black87,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _obscurePassword = !_obscurePassword;
-                          });
-                        },
-                      ),
-                      filled: true,
-                      fillColor: Colors.white,
-                    ),
-                    style: const TextStyle(color: Colors.black),
-                    obscureText: _obscurePassword,
-                    textInputAction: TextInputAction.next,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'La contraseña es obligatoria';
-                      }
-                      if (value.length < 6) {
-                        return 'La contraseña debe tener al menos 6 caracteres';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 20),
-                  TextFormField(
-                    controller: _confirmPasswordController,
-                    decoration: InputDecoration(
-                      labelText: 'Confirmar Contraseña *',
-                      labelStyle: const TextStyle(
-                        color: Colors.black87,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      prefixIcon: const Icon(
-                        Icons.lock_outline,
-                        color: Colors.black87,
-                      ),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscureConfirmPassword 
-                              ? Icons.visibility_outlined 
-                              : Icons.visibility_off_outlined,
-                          color: Colors.black87,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _obscureConfirmPassword = !_obscureConfirmPassword;
-                          });
-                        },
-                      ),
-                      filled: true,
-                      fillColor: Colors.white,
-                    ),
-                    style: const TextStyle(color: Colors.black),
-                    obscureText: _obscureConfirmPassword,
-                    textInputAction: TextInputAction.done,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Confirma tu contraseña';
-                      }
-                      if (value != _passwordController.text) {
-                        return 'Las contraseñas no coinciden';
-                      }
-                      return null;
-                    },
-                  ),
                 ],
                 const SizedBox(height: 20),
 
@@ -602,6 +468,94 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   validator: (value) {
                     if (value == null || value.isEmpty) {
                       return 'La fecha de nacimiento es obligatoria';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 20),
+
+                // Contraseña
+                TextFormField(
+                  controller: _passwordController,
+                  decoration: InputDecoration(
+                    labelText: 'Contraseña *',
+                    labelStyle: const TextStyle(
+                      color: Colors.black87,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.lock_outline,
+                      color: Colors.black87,
+                    ),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword 
+                            ? Icons.visibility_outlined 
+                            : Icons.visibility_off_outlined,
+                        color: Colors.black87,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _obscurePassword = !_obscurePassword;
+                        });
+                      },
+                    ),
+                    filled: true,
+                    fillColor: Colors.white,
+                  ),
+                  style: const TextStyle(color: Colors.black),
+                  obscureText: _obscurePassword,
+                  textInputAction: TextInputAction.next,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'La contraseña es obligatoria';
+                    }
+                    if (value.length < 6) {
+                      return 'La contraseña debe tener al menos 6 caracteres';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 20),
+
+                // Confirmar Contraseña
+                TextFormField(
+                  controller: _confirmPasswordController,
+                  decoration: InputDecoration(
+                    labelText: 'Confirmar Contraseña *',
+                    labelStyle: const TextStyle(
+                      color: Colors.black87,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.lock_outline,
+                      color: Colors.black87,
+                    ),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscureConfirmPassword 
+                            ? Icons.visibility_outlined 
+                            : Icons.visibility_off_outlined,
+                        color: Colors.black87,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _obscureConfirmPassword = !_obscureConfirmPassword;
+                        });
+                      },
+                    ),
+                    filled: true,
+                    fillColor: Colors.white,
+                  ),
+                  style: const TextStyle(color: Colors.black),
+                  obscureText: _obscureConfirmPassword,
+                  textInputAction: TextInputAction.done,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Confirma tu contraseña';
+                    }
+                    if (value != _passwordController.text) {
+                      return 'Las contraseñas no coinciden';
                     }
                     return null;
                   },

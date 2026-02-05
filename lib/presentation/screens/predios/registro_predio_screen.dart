@@ -9,6 +9,7 @@ import '../../../domain/entities/predio_entity.dart';
 import '../../../data/repositories/predio_repository_impl.dart';
 import '../../../data/models/predio_model.dart';
 import '../../providers/auth_provider.dart';
+import '../../../core/providers/predio_provider.dart';
 
 /// Pantalla para registrar un nuevo predio.
 /// 
@@ -236,9 +237,9 @@ class _RegistroPredioScreenState extends ConsumerState<RegistroPredioScreen> {
         fechaCreacion: DateTime.now(),
       );
 
-      // Guardar en Supabase usando el repositorio
+      // Guardar en Firebase usando el repositorio
       final repository = ref.read(predioRepositoryProvider);
-      await repository.createPredio(nuevoPredio);
+      final predioCreado = await repository.createPredio(nuevoPredio);
 
       if (mounted) {
         setState(() {
@@ -254,8 +255,9 @@ class _RegistroPredioScreenState extends ConsumerState<RegistroPredioScreen> {
           ),
         );
         
-        // Navegar a la lista de predios
-        context.go('/predios');
+        // Establecer el predio actual en el provider y navegar directamente al predio
+        ref.read(currentPredioIdProvider.notifier).state = predioCreado.id;
+        context.go('/predio/home');
       }
     } catch (e) {
       setState(() {

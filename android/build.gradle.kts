@@ -18,6 +18,23 @@ subprojects {
 
 // Fix para isar_flutter_libs: especificar namespace requerido por AGP 8.0+
 // El namespace debe coincidir con el package del AndroidManifest.xml
+// Forzar que todos los subproyectos usen la misma versión de Gradle
+subprojects {
+    afterEvaluate {
+        // Actualizar gradle-wrapper.properties si existe
+        val wrapperProps = file("${project.projectDir}/gradle/wrapper/gradle-wrapper.properties")
+        if (wrapperProps.exists()) {
+            var content = wrapperProps.readText()
+            // Reemplazar cualquier versión de Gradle con 8.13
+            content = content.replace(
+                Regex("distributionUrl=.*gradle-.*\\.zip"),
+                "distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip"
+            )
+            wrapperProps.writeText(content)
+        }
+    }
+}
+
 subprojects {
     plugins.withId("com.android.library") {
         if (project.name == "isar_flutter_libs") {

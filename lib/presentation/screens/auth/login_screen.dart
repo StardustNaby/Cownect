@@ -703,7 +703,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                       ),
                       TextButton(
-                        onPressed: () => context.go('/register'),
+                        onPressed: () => context.push('/register'),
                         child: Text(
                           'Regístrate ahora',
                           style: TextStyle(
