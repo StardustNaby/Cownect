@@ -6,6 +6,9 @@ import 'package:geolocator/geolocator.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/constants/estados_mexico.dart';
 import '../../../domain/entities/predio_entity.dart';
+import '../../../data/repositories/predio_repository_impl.dart';
+import '../../../data/models/predio_model.dart';
+import '../../providers/auth_provider.dart';
 
 /// Pantalla para registrar un nuevo predio.
 /// 
@@ -187,7 +190,6 @@ class _RegistroPredioScreenState extends ConsumerState<RegistroPredioScreen> {
         return;
       }
 
-      // TODO: Implementar registro real del predio en Supabase
       // Validar que clavePGN tenga 12 dígitos
       final clavePGN = _clavePGNController.text.trim();
       if (clavePGN.length != 12 || !RegExp(r'^\d{12}$').hasMatch(clavePGN)) {
@@ -198,15 +200,62 @@ class _RegistroPredioScreenState extends ConsumerState<RegistroPredioScreen> {
         return;
       }
 
-      // Simulación de registro
-      await Future.delayed(const Duration(seconds: 1));
+      // Obtener el usuario actual
+      final authState = ref.read(authNotifierProvider);
+      if (authState is! Authenticated) {
+        setState(() {
+          _errorMessage = 'No hay una sesión activa. Por favor, inicia sesión nuevamente.';
+          _isLoading = false;
+        });
+        return;
+      }
+
+      final usuario = authState.user;
+
+      // Crear la entidad del predio
+      final nuevoPredio = PredioEntity(
+        id: '', // Se generará en Supabase
+        idUsuario: usuario.id,
+        nombre: _nombreController.text.trim(),
+        estado: _estadoSeleccionado!,
+        municipio: _municipioController.text.trim(),
+        localidad: _localidadController.text.trim(),
+        codigoPostal: _codigoPostalController.text.trim(),
+        direccion: _direccionController.text.trim(),
+        superficieHectareas: superficie,
+        tipoTenencia: _tipoTenencia!,
+        latitud: latitud,
+        longitud: longitud,
+        upp: _uppController.text.trim(),
+        clavePGN: clavePGN,
+        propietarioLegal: _propietarioLegalController.text.trim(),
+        tipoProduccion: _tipoProduccion!,
+        claveCatastral: _claveCatastralController.text.trim().isNotEmpty
+            ? _claveCatastralController.text.trim()
+            : null,
+        fechaCreacion: DateTime.now(),
+      );
+
+      // Guardar en Supabase usando el repositorio
+      final repository = ref.read(predioRepositoryProvider);
+      await repository.createPredio(nuevoPredio);
 
       if (mounted) {
         setState(() {
           _isLoading = false;
         });
-        // Navegar al predio recién creado
-        context.go('/predio/home');
+        
+        // Mostrar mensaje de éxito
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Predio registrado correctamente'),
+            backgroundColor: AppColors.emeraldGreen,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        
+        // Navegar a la lista de predios
+        context.go('/predios');
       }
     } catch (e) {
       setState(() {

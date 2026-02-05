@@ -154,7 +154,7 @@ class AppTheme {
           letterSpacing: 0.15,
         ),
         bodyLarge: TextStyle(
-          fontSize: 16, // Mínimo 16px para cuerpo
+          fontSize: 18, // 18px para etiquetas críticas (ISO 25010 - Accesibilidad)
           fontWeight: FontWeight.normal,
           color: AppColors.lightOnSurface,
           letterSpacing: 0.5,
@@ -362,7 +362,7 @@ class AppTheme {
           letterSpacing: 0.15,
         ),
         bodyLarge: TextStyle(
-          fontSize: 16, // Mínimo 16px para cuerpo
+          fontSize: 18, // 18px para etiquetas críticas (ISO 25010 - Accesibilidad)
           fontWeight: FontWeight.normal,
           color: AppColors.darkOnSurface,
           letterSpacing: 0.5,

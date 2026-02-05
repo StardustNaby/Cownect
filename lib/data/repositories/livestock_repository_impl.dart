@@ -1,9 +1,9 @@
 import 'dart:io';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../domain/repositories/livestock_repository.dart';
 import '../../domain/entities/bovino_entity.dart';
 import '../../data/models/bovino_model.dart';
-import '../../core/providers/supabase_provider.dart';
+import '../../core/providers/firebase_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Excepción personalizada para errores del repositorio de ganado.
@@ -26,16 +26,16 @@ class NoInternetException extends LivestockException {
         );
 }
 
-/// Implementación del repositorio de ganado usando Supabase.
+/// Implementación del repositorio de ganado usando Firebase Firestore.
 /// 
-/// Esta clase implementa [LivestockRepository] y utiliza Supabase
+/// Esta clase implementa [LivestockRepository] y utiliza Firestore
 /// para todas las operaciones relacionadas con bovinos.
 class LivestockRepositoryImpl implements LivestockRepository {
-  final SupabaseClient _supabaseClient;
+  final FirebaseFirestore _firestore;
   final String? _activeUppId;
 
   LivestockRepositoryImpl(
-    this._supabaseClient, {
+    this._firestore, {
     String? activeUppId,
   }) : _activeUppId = activeUppId;
 
@@ -51,28 +51,21 @@ class LivestockRepositoryImpl implements LivestockRepository {
         );
       }
 
-      var query = _supabaseClient
-          .from('bovino')
-          .select()
-          .eq('id_upp', uppId);
+      final querySnapshot = await _firestore
+          .collection('bovino')
+          .where('id_upp', isEqualTo: uppId)
+          .get();
 
-      final response = await query;
-
-      if (response is List && response.isEmpty) {
+      if (querySnapshot.docs.isEmpty) {
         return [];
       }
 
-      final List<dynamic> data = response is List ? response : [response];
-      return data
-          .map((json) => BovinoModel.fromJson(
-                Map<String, dynamic>.from(json),
-              ).toEntity())
+      return querySnapshot.docs
+          .map((doc) => BovinoModel.fromFirestore(doc).toEntity())
           .toList();
     } on SocketException catch (_) {
       throw NoInternetException();
-    } on HttpException catch (e) {
-      throw LivestockException('Error de conexión: ${e.message}');
-    } on PostgrestException catch (e) {
+    } on FirebaseException catch (e) {
       throw LivestockException(
         'Error al obtener bovinos: ${e.message}',
         e.code,
@@ -86,23 +79,20 @@ class LivestockRepositoryImpl implements LivestockRepository {
   @override
   Future<BovinoEntity> getBovinoById({required String id}) async {
     try {
-      final response = await _supabaseClient
-          .from('bovino')
-          .select()
-          .eq('id_bovino', id)
-          .maybeSingle();
+      final doc = await _firestore
+          .collection('bovino')
+          .doc(id)
+          .get();
 
-      if (response == null) {
+      if (!doc.exists) {
         throw LivestockException('Bovino no encontrado con ID: $id');
       }
 
-      final model = BovinoModel.fromJson(Map<String, dynamic>.from(response));
+      final model = BovinoModel.fromFirestore(doc);
       return model.toEntity();
     } on SocketException catch (_) {
       throw NoInternetException();
-    } on HttpException catch (e) {
-      throw LivestockException('Error de conexión: ${e.message}');
-    } on PostgrestException catch (e) {
+    } on FirebaseException catch (e) {
       throw LivestockException(
         'Error al obtener bovino: ${e.message}',
         e.code,
@@ -116,7 +106,7 @@ class LivestockRepositoryImpl implements LivestockRepository {
   @override
   Future<BovinoEntity> createBovino({required BovinoEntity bovino}) async {
     try {
-      // Validar formato del arete SINIIGA antes de enviar a Supabase
+      // Validar formato del arete SINIIGA antes de enviar a Firestore
       if (bovino.areteSiniiga != null) {
         if (!_validarFormatoAreteSiniiga(bovino.areteSiniiga!)) {
           throw LivestockException(
@@ -128,32 +118,37 @@ class LivestockRepositoryImpl implements LivestockRepository {
 
       // Convertir entidad a modelo para serialización
       final model = BovinoModel.fromEntity(bovino);
-      final json = model.toJson();
+      final json = model.toFirestore();
 
-      // Remover el ID si existe (Supabase lo generará)
+      // Generar un ID único si no existe
+      final docRef = _firestore.collection('bovino').doc();
+      final id = bovino.id.isNotEmpty ? bovino.id : docRef.id;
+
+      // Remover el ID del JSON (Firestore lo maneja como document ID)
       json.remove('id_bovino');
 
-      final response = await _supabaseClient
-          .from('bovino')
-          .insert(json)
-          .select()
-          .single();
+      // Guardar en Firestore usando el ID como document ID
+      await _firestore
+          .collection('bovino')
+          .doc(id)
+          .set(json);
 
-      final createdModel = BovinoModel.fromJson(
-        Map<String, dynamic>.from(response),
-      );
+      // Obtener el documento creado
+      final createdDoc = await _firestore
+          .collection('bovino')
+          .doc(id)
+          .get();
+
+      final createdModel = BovinoModel.fromFirestore(createdDoc);
       return createdModel.toEntity();
     } on SocketException catch (_) {
       throw NoInternetException();
-    } on HttpException catch (e) {
-      throw LivestockException('Error de conexión: ${e.message}');
-    } on PostgrestException catch (e) {
-      // Manejar errores específicos de Supabase
-      if (e.code == '23505') {
-        // Violación de constraint único (arete duplicado)
+    } on FirebaseException catch (e) {
+      // Manejar errores específicos de Firestore
+      if (e.code == 'permission-denied') {
         throw LivestockException(
-          'Ya existe un bovino con este arete. Verifica que el arete sea único.',
-          'DUPLICATE_ARETE',
+          'No tienes permisos para crear bovinos.',
+          'PERMISSION_DENIED',
         );
       }
       throw LivestockException(
@@ -181,38 +176,43 @@ class LivestockRepositoryImpl implements LivestockRepository {
 
       // Convertir entidad a modelo para serialización
       final model = BovinoModel.fromEntity(bovino);
-      final json = model.toJson();
+      final json = model.toFirestore();
 
       // Remover el ID del JSON de actualización
-      final id = json.remove('id_bovino') as String;
+      final id = bovino.id;
+      json.remove('id_bovino');
 
-      final response = await _supabaseClient
-          .from('bovino')
-          .update(json)
-          .eq('id_bovino', id)
-          .select()
-          .single();
+      // Verificar que el documento existe
+      final docRef = _firestore.collection('bovino').doc(id);
+      final doc = await docRef.get();
 
-      final updatedModel = BovinoModel.fromJson(
-        Map<String, dynamic>.from(response),
-      );
-      return updatedModel.toEntity();
-    } on SocketException catch (_) {
-      throw NoInternetException();
-    } on HttpException catch (e) {
-      throw LivestockException('Error de conexión: ${e.message}');
-    } on PostgrestException catch (e) {
-      if (e.code == 'PGRST116') {
-        // No se encontró el registro
+      if (!doc.exists) {
         throw LivestockException(
           'Bovino no encontrado. No se pudo actualizar.',
           'NOT_FOUND',
         );
       }
-      if (e.code == '23505') {
+
+      // Actualizar en Firestore
+      await docRef.update(json);
+
+      // Obtener el documento actualizado
+      final updatedDoc = await docRef.get();
+      final updatedModel = BovinoModel.fromFirestore(updatedDoc);
+      return updatedModel.toEntity();
+    } on SocketException catch (_) {
+      throw NoInternetException();
+    } on FirebaseException catch (e) {
+      if (e.code == 'not-found') {
         throw LivestockException(
-          'Ya existe un bovino con este arete. Verifica que el arete sea único.',
-          'DUPLICATE_ARETE',
+          'Bovino no encontrado. No se pudo actualizar.',
+          'NOT_FOUND',
+        );
+      }
+      if (e.code == 'permission-denied') {
+        throw LivestockException(
+          'No tienes permisos para actualizar bovinos.',
+          'PERMISSION_DENIED',
         );
       }
       throw LivestockException(
@@ -228,27 +228,33 @@ class LivestockRepositoryImpl implements LivestockRepository {
   @override
   Future<void> deleteBovino({required String id}) async {
     try {
-      final response = await _supabaseClient
-          .from('bovino')
-          .delete()
-          .eq('id_bovino', id);
-
-      // Verificar si se eliminó algún registro
-      if (response == null || (response is List && response.isEmpty)) {
+      final docRef = _firestore.collection('bovino').doc(id);
+      
+      // Verificar que el documento existe
+      final doc = await docRef.get();
+      
+      if (!doc.exists) {
         throw LivestockException(
           'Bovino no encontrado. No se pudo eliminar.',
           'NOT_FOUND',
         );
       }
+
+      // Eliminar el documento
+      await docRef.delete();
     } on SocketException catch (_) {
       throw NoInternetException();
-    } on HttpException catch (e) {
-      throw LivestockException('Error de conexión: ${e.message}');
-    } on PostgrestException catch (e) {
-      if (e.code == 'PGRST116') {
+    } on FirebaseException catch (e) {
+      if (e.code == 'not-found') {
         throw LivestockException(
           'Bovino no encontrado. No se pudo eliminar.',
           'NOT_FOUND',
+        );
+      }
+      if (e.code == 'permission-denied') {
+        throw LivestockException(
+          'No tienes permisos para eliminar bovinos.',
+          'PERMISSION_DENIED',
         );
       }
       throw LivestockException(
@@ -276,29 +282,22 @@ class LivestockRepositoryImpl implements LivestockRepository {
         );
       }
 
-      var query = _supabaseClient
-          .from('bovino')
-          .select()
-          .eq('id_upp', uppId)
-          .eq('estado_productivo', estadoProductivo);
+      final querySnapshot = await _firestore
+          .collection('bovino')
+          .where('id_upp', isEqualTo: uppId)
+          .where('estado_productivo', isEqualTo: estadoProductivo)
+          .get();
 
-      final response = await query;
-
-      if (response is List && response.isEmpty) {
+      if (querySnapshot.docs.isEmpty) {
         return [];
       }
 
-      final List<dynamic> data = response is List ? response : [response];
-      return data
-          .map((json) => BovinoModel.fromJson(
-                Map<String, dynamic>.from(json),
-              ).toEntity())
+      return querySnapshot.docs
+          .map((doc) => BovinoModel.fromFirestore(doc).toEntity())
           .toList();
     } on SocketException catch (_) {
       throw NoInternetException();
-    } on HttpException catch (e) {
-      throw LivestockException('Error de conexión: ${e.message}');
-    } on PostgrestException catch (e) {
+    } on FirebaseException catch (e) {
       throw LivestockException(
         'Error al obtener bovinos por estado productivo: ${e.message}',
         e.code,
@@ -326,29 +325,22 @@ class LivestockRepositoryImpl implements LivestockRepository {
         );
       }
 
-      var query = _supabaseClient
-          .from('bovino')
-          .select()
-          .eq('id_upp', uppId)
-          .eq('estatus_sistema', estatusSistema);
+      final querySnapshot = await _firestore
+          .collection('bovino')
+          .where('id_upp', isEqualTo: uppId)
+          .where('estatus_sistema', isEqualTo: estatusSistema)
+          .get();
 
-      final response = await query;
-
-      if (response is List && response.isEmpty) {
+      if (querySnapshot.docs.isEmpty) {
         return [];
       }
 
-      final List<dynamic> data = response is List ? response : [response];
-      return data
-          .map((json) => BovinoModel.fromJson(
-                Map<String, dynamic>.from(json),
-              ).toEntity())
+      return querySnapshot.docs
+          .map((doc) => BovinoModel.fromFirestore(doc).toEntity())
           .toList();
     } on SocketException catch (_) {
       throw NoInternetException();
-    } on HttpException catch (e) {
-      throw LivestockException('Error de conexión: ${e.message}');
-    } on PostgrestException catch (e) {
+    } on FirebaseException catch (e) {
       throw LivestockException(
         'Error al obtener bovinos por estatus: ${e.message}',
         e.code,
@@ -374,13 +366,12 @@ class LivestockRepositoryImpl implements LivestockRepository {
 
 /// Provider que expone la implementación del repositorio de ganado.
 /// 
-/// Este provider utiliza el [supabaseClientProvider] para obtener el cliente
-/// de Supabase y crear una instancia de [LivestockRepositoryImpl].
+/// Este provider utiliza el [firebaseFirestoreProvider] para obtener la instancia
+/// de Firestore y crear una instancia de [LivestockRepositoryImpl].
 /// 
 /// Nota: Requiere que se proporcione el ID de la UPP activa.
 /// Por defecto, intentará obtenerlo del usuario actual si está disponible.
 final livestockRepositoryProvider = Provider.family<LivestockRepository, String?>((ref, activeUppId) {
-  final supabaseClient = ref.watch(supabaseClientProvider);
-  return LivestockRepositoryImpl(supabaseClient, activeUppId: activeUppId);
+  final firestore = ref.watch(firebaseFirestoreProvider);
+  return LivestockRepositoryImpl(firestore, activeUppId: activeUppId);
 });
-

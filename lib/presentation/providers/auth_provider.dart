@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../domain/entities/usuario_entity.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../../data/repositories/auth_repository_impl.dart';
-import '../../core/providers/supabase_provider.dart';
+import '../../core/providers/firebase_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Estados posibles de autenticación.
@@ -43,11 +43,11 @@ class Authenticated extends AuthState {
 
 /// Notifier que gestiona el estado de autenticación.
 /// 
-/// Monitorea los cambios de sesión de Supabase y proporciona
+/// Monitorea los cambios de sesión de Firebase Auth y proporciona
 /// métodos para login, logout y verificación de sesión.
 class AuthNotifier extends StateNotifier<AuthState> {
   final AuthRepository _authRepository;
-  final SupabaseClient _supabaseClient;
+  final FirebaseAuth _firebaseAuth;
   final SharedPreferences _prefs;
 
   // Clave para almacenar la preferencia de "mantener sesión"
@@ -58,24 +58,24 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   AuthNotifier(
     this._authRepository,
-    this._supabaseClient,
+    this._firebaseAuth,
     this._prefs,
   ) : super(Loading()) {
     // Verificar sesión actual al inicializar
     _checkCurrentSession();
-    // Escuchar cambios en el estado de autenticación de Supabase
-    _authSubscription = _supabaseClient.auth.onAuthStateChange.listen(_handleAuthStateChange);
+    // Escuchar cambios en el estado de autenticación de Firebase
+    _authSubscription = _firebaseAuth.authStateChanges().listen(_handleAuthStateChange);
   }
 
   /// Verifica si hay una sesión activa al inicializar el notifier.
   Future<void> _checkCurrentSession() async {
     try {
-      final session = _supabaseClient.auth.currentSession;
-      if (session != null && !session.isExpired) {
+      final user = _firebaseAuth.currentUser;
+      if (user != null) {
         // Hay una sesión válida, cargar el usuario
         await _loadUser();
       } else {
-        // No hay sesión o está expirada
+        // No hay sesión
         state = Unauthenticated();
       }
     } catch (e) {
@@ -89,23 +89,15 @@ class AuthNotifier extends StateNotifier<AuthState> {
     super.dispose();
   }
 
-  /// Maneja los cambios en el estado de autenticación de Supabase.
-  Future<void> _handleAuthStateChange(dynamic authStateChange) async {
-    // Usar reflexión para acceder a los eventos
+  /// Maneja los cambios en el estado de autenticación de Firebase.
+  Future<void> _handleAuthStateChange(User? user) async {
     try {
-      final event = authStateChange.event;
-      if (event.toString().contains('signedIn') || 
-          event.toString().contains('SIGNED_IN')) {
-        // Usuario inició sesión
+      if (user != null) {
+        // Usuario inició sesión o cambió
         await _loadUser();
-      } else if (event.toString().contains('signedOut') || 
-                 event.toString().contains('SIGNED_OUT')) {
+      } else {
         // Usuario cerró sesión
         state = Unauthenticated();
-      } else if (event.toString().contains('tokenRefreshed') || 
-                 event.toString().contains('TOKEN_REFRESHED')) {
-        // Token refrescado, verificar usuario
-        await _loadUser();
       }
     } catch (e) {
       // Si hay error, simplemente recargar el usuario
@@ -135,32 +127,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = Loading();
 
     try {
-      // Primero verificar la sesión actual de Supabase
-      final session = _supabaseClient.auth.currentSession;
+      // Primero verificar la sesión actual de Firebase
+      final user = _firebaseAuth.currentUser;
       
-      if (session != null && !session.isExpired) {
-        // Hay una sesión válida, intentar refrescar si es necesario
-        try {
-          // Intentar refrescar la sesión si está cerca de expirar
-          if (session.expiresAt != null) {
-            final expiresAt = DateTime.fromMillisecondsSinceEpoch(session.expiresAt! * 1000);
-            final now = DateTime.now();
-            final diff = expiresAt.difference(now);
-            
-            // Si la sesión expira en menos de 5 minutos, refrescar
-            if (diff.inMinutes < 5) {
-              await _supabaseClient.auth.refreshSession();
-            }
-          }
-          
-          // Cargar el usuario
-          await _loadUser();
-          return;
-        } catch (e) {
-          // Si falla el refresh, intentar cargar usuario de todas formas
-          await _loadUser();
-          return;
-        }
+      if (user != null) {
+        // Hay una sesión válida, cargar el usuario
+        await _loadUser();
+        return;
       }
 
       // Verificar si el usuario quiere mantener la sesión
@@ -173,9 +146,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
       }
 
       // Intentar cargar usuario (puede haber una sesión que no detectamos)
-      final user = await _authRepository.getCurrentUser();
-      if (user != null) {
-        state = Authenticated(user);
+      final currentUser = await _authRepository.getCurrentUser();
+      if (currentUser != null) {
+        state = Authenticated(currentUser);
       } else {
         state = Unauthenticated();
       }
@@ -352,12 +325,12 @@ final sharedPreferencesProvider = FutureProvider<SharedPreferences>((ref) async 
 final authNotifierProvider =
     StateNotifierProvider<AuthNotifier, AuthState>((ref) {
   final authRepository = ref.watch(authRepositoryProvider);
-  final supabaseClient = ref.watch(supabaseClientProvider);
+  final firebaseAuth = ref.watch(firebaseAuthProvider);
   final prefsAsync = ref.watch(sharedPreferencesProvider);
 
   // Esperar a que SharedPreferences esté listo
   return prefsAsync.when(
-    data: (prefs) => AuthNotifier(authRepository, supabaseClient, prefs),
+    data: (prefs) => AuthNotifier(authRepository, firebaseAuth, prefs),
     loading: () => throw Exception('SharedPreferences no está listo'),
     error: (error, stack) => throw Exception('Error al cargar SharedPreferences: $error'),
   );

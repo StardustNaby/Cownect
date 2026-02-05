@@ -1,19 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 import 'core/router/router.dart';
 import 'core/theme/app_theme.dart';
-import 'core/constants/supabase_constants.dart';
 import 'presentation/providers/auth_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Inicializar Supabase
-  await Supabase.initialize(
-    url: SupabaseConstants.supabaseUrl,
-    anonKey: SupabaseConstants.supabaseAnonKey,
-  );
+  // Inicializar Firebase con las opciones de la plataforma actual
+  try {
+    // Verificar si Firebase ya está inicializado
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
+  } catch (e) {
+    // Si hay un error de inicialización, mostrar información útil
+    debugPrint('Error al inicializar Firebase: $e');
+    debugPrint(
+      'Para Windows, asegúrate de haber registrado tu app en Firebase Console '
+      'y obtenido el App ID correcto. Ejecuta: flutterfire configure --platforms=windows',
+    );
+    // Re-lanzar el error para que sea visible
+    rethrow;
+  }
 
   runApp(
     const ProviderScope(
