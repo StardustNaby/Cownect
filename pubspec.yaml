@@ -18,8 +18,8 @@ dependencies:
   go_router: ^13.0.0
 
   # Database
-  isar: ^3.1.0+1
-  isar_flutter_libs: ^3.1.0+1
+  # isar: ^3.1.0+1  # Comentado temporalmente para construir APK
+  # isar_flutter_libs: ^3.1.0+1  # Comentado temporalmente para construir APK
 
   # Backend
   firebase_core: ^3.6.0
@@ -45,7 +45,7 @@ dev_dependencies:
   
   # Code Generation
   build_runner: ^2.4.7
-  isar_generator: ^3.1.0+1
+  # isar_generator: ^3.1.0+1  # Comentado temporalmente para construir APK
   riverpod_generator: ^2.3.9
 
 flutter:

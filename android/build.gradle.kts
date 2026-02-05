@@ -37,6 +37,10 @@ subprojects {
 
 subprojects {
     plugins.withId("com.android.library") {
+        extensions.configure<com.android.build.gradle.LibraryExtension>("android") {
+            compileSdk = 36  // Forzar compileSdk 36 para todos los subproyectos
+        }
+        
         if (project.name == "isar_flutter_libs") {
             extensions.configure<com.android.build.gradle.LibraryExtension>("android") {
                 namespace = "dev.isar.isar_flutter_libs"
@@ -58,6 +62,17 @@ subprojects {
                         manifestFile.writeText(content)
                     }
                 }
+            }
+        }
+    }
+}
+
+// Forzar resolución de dependencias de androidx.core para compatibilidad
+subprojects {
+    project.configurations.all {
+        resolutionStrategy.eachDependency {
+            if (requested.group == "androidx.core") {
+                useVersion("1.12.0")
             }
         }
     }
